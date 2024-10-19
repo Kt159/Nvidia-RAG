@@ -21,9 +21,21 @@ os.environ["NVIDIA_API_KEY"] = os.getenv("NVIDIA_API_KEY")
 
 
 class Indexing_Pipeline():
+
+    """Pipeline for indexing the documents.
+       Current implementation supports indexing the documents using NVIDIA and Azure OpenAI models.
+
+    Args:
+        embed_model (Optional[str], optional): Embedding model (NV-Embed-QA, text-embedding-ada-002). Defaults to "text-embedding-ada-002".
+
+    """
+
     def __init__(self, 
                  embed_model: Optional[str] = "NV-Embed-QA"):
         
+        self.collection_name = os.getenv("MILVUS_COLLECTION_NAME")
+        self.milvus_port = os.getenv("MILVUS_PORT")
+        self.host_IP = os.getenv("MILVUS_HOST")
         self.embed_model = embed_model
         self.embedder = None  
         self.vector_store = None
@@ -89,19 +101,16 @@ class Indexing_Pipeline():
             str: Message indicating the status of the initialization
         
         """
-        collection_name = os.getenv("MILVUS_COLLECTION_NAME")
-        milvus_port = os.getenv("MILVUS_PORT")
-        host_IP = os.getenv("MILVUS_HOST")
-
+        
         milvus_store = MilvusVectorStore(
             dim=dim,
-            collection_name=collection_name,
-            uri=f"http://{host_IP}:{milvus_port}/",
+            collection_name=self.collection_name,
+            uri=f"http://{self.host_IP}:{self.milvus_port}/",
             overwrite=False
         )
         if milvus_store:
             self.vector_store = milvus_store
-            print (f"Initialized {milvus_store.collection_name} milvus store at {milvus_store.uri}")
+            print (f"Initialized {milvus_store.collection_name} milvus store at {milvus_store.uri} with {milvus_store.dim} dimensions")
         
         else:
             return "Error with milvus store initialization"
@@ -115,32 +124,30 @@ class Indexing_Pipeline():
             vector_store_index (VectorStoreIndex): VectorStoreIndex object containing previous chunks
         """
         storage_context = StorageContext.from_defaults(vector_store=self.vector_store)
-        VectorStoreIndex.from_documents(
+        index = VectorStoreIndex.from_documents(
             [Document(text=chunk.text) for chunk in chunks], storage_context=storage_context, embed_model=self.embedder
         )
         print(f"Added {len(chunks)} chunks to the milvus store")
 
-        return
+        return index
     
     def reset_milvus_store(self):
         """
-        Resets the milvus store by deleting the collection
+        Resets the milvus store by dropping the collection and recreating empty collection
         """
-        milvus_port = os.getenv("MILVUS_PORT")
-        host_IP = os.getenv("MILVUS_HOST")
-        
-        connections.connect(host=host_IP, port=milvus_port)
-        collection = Collection(self.vector_store.collection_name)
-        num_entities = collection.num_entities
-        if num_entities > 0:
-            collection.delete(expr=f"id in [0, {num_entities - 1}]")  # Delete all vectors
-            print(f"Cleared {num_entities} vectors from collection '{self.vector_store.collection_name}'")
+        connections.connect(host=self.host_IP, port=self.milvus_port)
+
+        if self.vector_store:
+            collection = Collection(name=self.vector_store.collection_name)
+            collection.drop()
+            print(f"Deleted {self.vector_store.collection_name} from milvus store, please re-run the indexing pipeline")
+            self.vector_store = None
+
         else:
-            print(f"Collection '{self.vector_store.collection_name}' is already empty.")
-       
-        return
+            print("No collection found in the milvus store")
         
-    def run(self, path:List[str]) -> VectorStoreIndex:
+        
+    def run(self, path:List[str]) -> MilvusVectorStore:
         documents = self.read_document(path)
         chunks = self.chunk_document(documents=documents, chunk_size=512) #Chunk_Size = 512 is the Token limit for NV-Embed-QA embedding model 
 
@@ -150,18 +157,27 @@ class Indexing_Pipeline():
             elif self.embed_model == "text-embedding-ada-002":
                 self.initialize_milvus_store(dim=1536) #Dimension of the vectors for Azure OpenAI Embedding model
 
-            self.add_to_milvus_store(chunks=chunks)
+            index = self.add_to_milvus_store(chunks=chunks)
         
         else:
-            self.add_to_milvus_store(chunks=chunks)
+            index = self.add_to_milvus_store(chunks=chunks)
+
+        return index
                 
 
     def check_milvus_store(self):
-        collection = Collection(self.vector_store.collection_name)
-        vector_count = collection.num_entities
-        print(f"Number of vectors in the collection: {vector_count}")
+        """
+        Checks the number of vectors in the milvus store
+        """
+        if self.vector_store:
+            connections.connect(host=self.host_IP, port=self.milvus_port)
+            collection = Collection(name = self.vector_store.collection_name)
+            collection.flush()
+            vector_count = collection.num_entities
+            print(f"Number of vectors in the {self.vector_store.collection_name} collection: {vector_count}")
 
-        return
+        else:
+            print("No collection found in the milvus store")
 
 
 
