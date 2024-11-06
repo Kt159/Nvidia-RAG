@@ -170,6 +170,34 @@ class Indexing_Pipeline():
 
         else:
             print("No collection found in the milvus store")
+
+
+    def delete_milvus_indexes_using_filename(self, filename: str):
+        # Connect to Milvus
+        connections.connect(host=self.milvus_host_IP, port=self.milvus_port)
+        
+        if self.milvus_store:
+            try:
+                # Initialize the collection
+                collection = Collection(name=self.milvus_store.collection_name)
+                
+                # Use a filter expression to delete all entries with the specific filename metadata
+                expr = f"filename == '{filename}'"
+                collection.delete(expr)
+                
+                print(f"Deleted indexes for {filename} from Milvus store")
+                
+                # Success message for FastAPI response
+                return {"status": "success", "message": f"Deleted indexes for {filename} from Milvus store"}
+            
+            except Exception as e:
+                print("Error deleting from Milvus:", e)
+                return {"status": "error", "message": str(e)}
+        
+        else:
+            print("No such file found in the Milvus store")
+            return {"status": "error", "message": "No such file found in the Milvus store"}
+        
         
     
     def run(self, path: List[str]) -> VectorStoreIndex:

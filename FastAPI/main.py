@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Path, HTTPException
+from fastapi import FastAPI, Path, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 from pydantic import BaseModel
@@ -37,15 +37,13 @@ minio_client = Minio(
 )
 
 bucket_name = os.getenv("MINIO_BUCKET_NAME")  # MinIO bucket name
-indexing_status = {}
+# indexing_status = {}
 
 # Background task for document indexing
 def index_document_in_background(file_path):
-    try:
-        indexing_status[file_path] = "Indexing in progress"
-        indexing_pipeline = Indexing_Pipeline()  
-        index = indexing_pipeline.run(file_path)
-        indexing_status[file_path] = "Indexing complete"
+    try: 
+        indexing_pipeline = Indexing_Pipeline()
+        index = indexing_pipeline.run([file_path])
         return index
     
     except Exception as e:
@@ -55,8 +53,7 @@ def index_document_in_background(file_path):
 # Helper function for querying
 def query_pipeline_execution(query: str):
     try:
-        query_pipeline = Query_Pipeline() 
-
+        query_pipeline= Query_Pipeline() 
         # Set the embedder and LLM model in the settings
         Settings.embed_model = query_pipeline.embedder
         Settings.llm = query_pipeline.llm_model
@@ -76,8 +73,6 @@ async def index_document(file_name: str):
             raise HTTPException(status_code=404, detail=f"Document '{file_name}' not found in MinIO")
 
         index = index_document_in_background(file_name)
-        print("Indexing complete")
-
         return {"index": index}
     
     except Exception as e:
@@ -98,6 +93,13 @@ async def query_documents(query: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving response: {e}")
 
+    
+@app.delete("/delete")
+async def delete_indexes(file_name: str = Query(...)):
+    indexing_pipeline = Indexing_Pipeline()
+    response = indexing_pipeline.delete_milvus_indexes_using_filename(file_name)
+    return response
+    
 
 # Run the FastAPI application
 if __name__ == "__main__":
