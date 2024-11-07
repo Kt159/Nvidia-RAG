@@ -132,20 +132,22 @@ class Query_Pipeline():
                                 "Answer: "
                                 )
         
+        
         # Set up synthesizer, LLM, and query engine
+        retriever = self.initalize_retriever()
         synthesizer = get_response_synthesizer(response_mode="compact")
         llm = self.llm_model
 
         query_engine = RAGStringQueryEngine(
-            retriever=self.initalize_retriever(),
+            retriever=retriever,
             response_synthesizer=synthesizer,
             llm=llm,
             qa_prompt=qa_prompt,
         )
 
-        response = query_engine.query(query)
+        response = query_engine.custom_query(query)
 
-        return response.response
+        return response
         
 
 class RAGStringQueryEngine(CustomQueryEngine, BaseModel):

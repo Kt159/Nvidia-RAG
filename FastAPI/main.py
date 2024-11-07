@@ -1,10 +1,8 @@
 from fastapi import FastAPI, Path, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
 from pydantic import BaseModel
 from indexing import Indexing_Pipeline 
 from querying import Query_Pipeline 
-import tempfile
 import os
 import uvicorn
 from minio import Minio
@@ -37,7 +35,6 @@ minio_client = Minio(
 )
 
 bucket_name = os.getenv("MINIO_BUCKET_NAME")  # MinIO bucket name
-# indexing_status = {}
 
 # Background task for document indexing
 def index_document_in_background(file_path):
@@ -96,9 +93,12 @@ async def query_documents(query: QueryRequest):
     
 @app.delete("/delete")
 async def delete_indexes(file_name: str = Query(...)):
-    indexing_pipeline = Indexing_Pipeline()
-    response = indexing_pipeline.delete_milvus_indexes_using_filename(file_name)
-    return response
+    try:
+        indexing_pipeline = Indexing_Pipeline()
+        response = indexing_pipeline.delete_milvus_indexes_using_filename(file_name)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting indexes from milvus: {e}")
     
 
 # Run the FastAPI application
